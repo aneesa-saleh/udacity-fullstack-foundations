@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database_setup import Base, Restaurant, MenuItem
 
+import re
+
 def create_db_session():
     engine = create_engine('sqlite:///restaurantmenu.db')
     Base.metadata.bind = engine
@@ -12,6 +14,7 @@ def create_db_session():
     return DBSession()
 
 class WebServerHandler(BaseHTTPRequestHandler):
+    edit_url_regex = re.compile('/restaurants/[\d]+/edit/?$')
 
     def do_GET(self):
         if self.path.endswith('/restaurants'):
@@ -50,7 +53,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
                 >
                     <span style="font-size: 20px; margin-bottom: 5px;">{restaurant_name}</span>
                     <span style="display: block;">
-                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="#">Edit</a>
+                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants/{restaurant_id}/edit">Edit</a>
                         <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="#">Delete</a>
                     </span>
                 </li>
@@ -59,7 +62,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
             session = create_db_session()
             restaurants = session.query(Restaurant).all()
             restaurants_html = "".join(
-                restaurant_html.format(restaurant_name=restaurant.name) for restaurant in restaurants
+                restaurant_html.format(restaurant_name=restaurant.name, restaurant_id=restaurant.id) for restaurant in restaurants
             )
             self.wfile.write(page_html.format(restaurants=restaurants_html).encode())
             return
@@ -107,11 +110,77 @@ class WebServerHandler(BaseHTTPRequestHandler):
             '''
             self.wfile.write(page_html.encode())
             return
+
+        if self.edit_url_regex.match(self.path): # /restaurants/:id/edit
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+
+            form_html = '''
+                <form style="margin-bottom: 10px;" method="POST" action="/restaurants/{id}/edit">
+                    <input
+                        type="text" name="restaurant_name"
+                        placeholder="Enter new name"
+                        value="{name}"
+                        style="font-size: 16px;
+                            padding: 5px;
+                            border-radius: 3px;
+                            border: 1px solid lightgray;"
+                    >
+                    <button
+                        type="submit"
+                        style="font-size: 16px;
+                            margin: 10px;
+                            background-color: #0083a8;
+                            padding: 5px 10px;
+                            border: 0;
+                            border-radius: 3px;
+                            color: white;
+                            font-weight: 300;"
+                    >Rename</button>
+                </form>
+            '''
+
+            restaurant_not_found_html = '''
+                <p>Sorry, that restaurant does not exist.</p>
+            '''
+
+            page_html = '''
+                <!DOCTYPE html>
+                <html lang="en">
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <title>Restaurants</title>
+                        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400" rel="stylesheet">
+                    </head>
+                    <body style="font-family: 'Open Sans', sans-serif; font-weight: 300; padding: 10px 20px;">
+                        <h1>{name}</h1>
+                        {content}
+                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants">
+                            Home
+                        </a>
+                    </body>
+                </html>
+            '''
+
+            id_search = re.search('\d+', self.path)
+            id = id_search.group(0)
+
+            session = create_db_session()
+            restaurant = session.query(Restaurant).filter_by(id=id)
+
+            if(restaurant.count() > 0):
+                content = form_html.format(id=restaurant[0].id, name=restaurant[0].name)
+                self.wfile.write(page_html.format(name=restaurant[0].name, content=content).encode())
+            else:
+                self.wfile.write(page_html.format(name='Not found', content=restaurant_not_found_html).encode())
+            return
         else:
             self.send_error(404, 'File not found: %s' % self.path)
 
     def do_POST(self):
-        try:
+        # try:
             if(self.path.endswith('/restaurants/new')):
 
                 length = int(self.headers.get('Content-length', 0))
@@ -132,9 +201,31 @@ class WebServerHandler(BaseHTTPRequestHandler):
                     self.send_response(303)
                     self.send_header('Location', '/restaurants')
                     self.end_headers()
-            return
-        except:
-            pass
+                return
+            if self.edit_url_regex.match(self.path):  # /restaurants/:id/edit
+                length = int(self.headers.get('Content-length', 0))
+                body = self.rfile.read(length).decode()
+                params = parse_qs(body)
+
+                if ('restaurant_name' in params):
+                    restaurant_name = params['restaurant_name'][0]
+
+                    session = create_db_session()
+                    id_search = re.search('\d+', self.path)
+                    id = id_search.group(0)
+                    restaurant = session.query(Restaurant).filter_by(id=id)
+
+                    if (restaurant.count() > 0):
+                        updated_restaurant = restaurant.one()
+                        updated_restaurant.name = restaurant_name
+                        session.add(updated_restaurant)
+                        session.commit()
+
+                self.send_response(303)
+                self.send_header('Location', '/restaurants')
+                self.end_headers()
+        # except:
+        #     print('error')
 
 def main():
     try:
