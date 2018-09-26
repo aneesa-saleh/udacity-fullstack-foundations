@@ -79,9 +79,25 @@ class WebServerHandler(BaseHTTPRequestHandler):
                     </head>
                     <body style="font-family: 'Open Sans', sans-serif; font-weight: 300; padding: 10px 20px;">
                         <h1>New Restaurant</h1>
-                        <form method="POST" action="/restaurants/new/create">
-                            <input type="text" name="restaurant_name">
-                            <button type="submit">Create</button>
+                        <form style="margin-bottom: 10px;" method="POST" action="/restaurants/new">
+                            <input
+                                type="text" name="restaurant_name"
+                                style="font-size: 16px;
+                                    padding: 5px;
+                                    border-radius: 3px;
+                                    border: 1px solid lightgray;"
+                            >
+                            <button
+                                type="submit"
+                                style="font-size: 16px;
+                                    margin: 10px;
+                                    background-color: #0083a8;
+                                    padding: 5px 10px;
+                                    border: 0;
+                                    border-radius: 3px;
+                                    color: white;
+                                    font-weight: 300;"
+                            >Create</button>
                         </form>
                         <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants">
                             Home
@@ -96,7 +112,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            if(self.path.endswith('/restaurants/new/create')):
+            if(self.path.endswith('/restaurants/new')):
 
                 length = int(self.headers.get('Content-length', 0))
                 body = self.rfile.read(length).decode()
