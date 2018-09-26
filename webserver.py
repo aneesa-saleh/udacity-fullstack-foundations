@@ -14,9 +14,12 @@ def create_db_session():
     return DBSession()
 
 class WebServerHandler(BaseHTTPRequestHandler):
+
     edit_url_regex = re.compile('/restaurants/[\d]+/edit/?$')
+    delete_url_regex = re.compile('/restaurants/[\d]+/delete/?$')
 
     def do_GET(self):
+        # ********************* HOME PAGE *********************
         if self.path.endswith('/restaurants'):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -54,7 +57,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
                     <span style="font-size: 20px; margin-bottom: 5px;">{restaurant_name}</span>
                     <span style="display: block;">
                         <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants/{restaurant_id}/edit">Edit</a>
-                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="#">Delete</a>
+                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants/{restaurant_id}/delete">Delete</a>
                     </span>
                 </li>
             '''
@@ -66,6 +69,8 @@ class WebServerHandler(BaseHTTPRequestHandler):
             )
             self.wfile.write(page_html.format(restaurants=restaurants_html).encode())
             return
+
+        # ********************* NEW RESTAURANT *********************
         if self.path.endswith('/restaurants/new'):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -108,9 +113,11 @@ class WebServerHandler(BaseHTTPRequestHandler):
                     </body>
                 </html>
             '''
+
             self.wfile.write(page_html.encode())
             return
 
+        # ********************* EDIT RESTAURANT *********************
         if self.edit_url_regex.match(self.path): # /restaurants/:id/edit
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -176,11 +183,71 @@ class WebServerHandler(BaseHTTPRequestHandler):
             else:
                 self.wfile.write(page_html.format(name='Not found', content=restaurant_not_found_html).encode())
             return
+
+        # ********************* DELETE RESTAURANT *********************
+        if self.delete_url_regex.match(self.path): # /restaurants/:id/delete
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+
+            form_html = '''
+                <form style="margin-bottom: 10px;" method="POST" action="/restaurants/{id}/delete">
+                    <p>Are you sure you want to delete {name}?</p>
+                    <button
+                        type="submit"
+                        style="font-size: 16px;
+                            margin: 10px;
+                            background-color: red;
+                            padding: 5px 10px;
+                            border: 0;
+                            border-radius: 3px;
+                            color: white;
+                            font-weight: 300;"
+                    >Delete</button>
+                </form>
+            '''
+
+            restaurant_not_found_html = '''
+                <p>Sorry, that restaurant does not exist.</p>
+            '''
+
+            page_html = '''
+                <!DOCTYPE html>
+                <html lang="en">
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <title>Restaurants</title>
+                        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400" rel="stylesheet">
+                    </head>
+                    <body style="font-family: 'Open Sans', sans-serif; font-weight: 300; padding: 10px 20px;">
+                        <h1>{name}</h1>
+                        {content}
+                        <a style="color: #0083a8; margin: 5px; font-weight: 400;" href="/restaurants">
+                            Home
+                        </a>
+                    </body>
+                </html>
+            '''
+
+            id_search = re.search('\d+', self.path)
+            id = id_search.group(0)
+
+            session = create_db_session()
+            restaurant = session.query(Restaurant).filter_by(id=id)
+
+            if(restaurant.count() > 0):
+                content = form_html.format(id=restaurant[0].id, name=restaurant[0].name)
+                self.wfile.write(page_html.format(name=restaurant[0].name, content=content).encode())
+            else:
+                self.wfile.write(page_html.format(name='Not found', content=restaurant_not_found_html).encode())
+            return
         else:
             self.send_error(404, 'File not found: %s' % self.path)
 
     def do_POST(self):
-        # try:
+        try:
+            # ********************* NEW RESTAURANT *********************
             if(self.path.endswith('/restaurants/new')):
 
                 length = int(self.headers.get('Content-length', 0))
@@ -202,6 +269,8 @@ class WebServerHandler(BaseHTTPRequestHandler):
                     self.send_header('Location', '/restaurants')
                     self.end_headers()
                 return
+
+            # ********************* EDIT RESTAURANT *********************
             if self.edit_url_regex.match(self.path):  # /restaurants/:id/edit
                 length = int(self.headers.get('Content-length', 0))
                 body = self.rfile.read(length).decode()
@@ -224,8 +293,26 @@ class WebServerHandler(BaseHTTPRequestHandler):
                 self.send_response(303)
                 self.send_header('Location', '/restaurants')
                 self.end_headers()
-        # except:
-        #     print('error')
+                return
+
+            # ********************* DELETE RESTAURANT *********************
+            if self.delete_url_regex.match(self.path):  # /restaurants/:id/delete
+                id_search = re.search('\d+', self.path)
+                id = id_search.group(0)
+
+                session = create_db_session()
+                restaurant = session.query(Restaurant).filter_by(id=id)
+
+                if (restaurant.count() > 0):
+                    session.delete(restaurant.one())
+                    session.commit()
+
+                self.send_response(303)
+                self.send_header('Location', '/restaurants')
+                self.end_headers()
+                return
+        except:
+            pass
 
 def main():
     try:
